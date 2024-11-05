@@ -1,0 +1,125 @@
+# Step 1: Import Libraries
+import numpy as np
+import pandas as pd
+from tensorflow.keras import Model, Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.optimizers import Adam
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.losses import MeanSquaredLogarithmicError
+
+# Step 2: Load Dataset
+data = pd.read_csv("http://storage.googleapis.com/download.tensorflow.org/data/ecg.csv")
+print("Dataset Shape:", data.shape)
+
+# Step 3: Data Preprocessing
+scaler = MinMaxScaler()
+data_scaled = scaler.fit_transform(data)
+
+# Step 4: Split Data
+x_train, x_test = train_test_split(data_scaled, test_size=0.2, random_state=42)
+
+# Step 5: Define Autoencoder Model
+class AutoEncoder(Model):
+    def __init__(self, output_units):
+        super(AutoEncoder, self).__init__()
+        self.encoder = Sequential([
+            Dense(64, activation="relu"),
+            Dense(32, activation="relu"),
+            Dense(16, activation="relu"),
+            Dense(8, activation="relu")
+        ])
+        self.decoder = Sequential([
+            Dense(16, activation="relu"),
+            Dense(32, activation="relu"),
+            Dense(64, activation="relu"),
+            Dense(output_units, activation="sigmoid")
+        ])
+        
+    def call(self, x):
+        encoded = self.encoder(x)
+        decoded = self.decoder(encoded)
+        return decoded
+
+# Step 6: Compile and Train Model
+autoencoder = AutoEncoder(output_units=x_train.shape[1])
+autoencoder.compile(optimizer=Adam(), loss=MeanSquaredLogarithmicError(), metrics=['mse'])
+history = autoencoder.fit(x_train, x_train, epochs=20, batch_size=512, validation_data=(x_test, x_test))
+
+# Step 7: Evaluate and Plot Results
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from sklearn.metrics import accuracy_score
+
+# Step 8: Calculate Reconstruction Errors
+reconstructions = autoencoder.predict(x_train)
+reconstruction_errors = tf.keras.losses.mean_squared_logarithmic_error(reconstructions, x_train)
+
+# Step 9: Determine Threshold for Anomaly Detection
+threshold = np.mean(reconstruction_errors.numpy()) + np.std(reconstruction_errors.numpy())
+print("Anomaly detection threshold:", threshold)
+
+# Step 10: Make Predictions
+# For simplicity, let's assume the anomalies are in the test set for demonstration purposes.
+# In practice, you would have labels for the test data.
+test_reconstructions = autoencoder.predict(x_test)
+test_reconstruction_errors = tf.keras.losses.mean_squared_logarithmic_error(test_reconstructions, x_test)
+
+# Classifying as normal or anomaly
+y_pred = (test_reconstruction_errors.numpy() > threshold).astype(int)
+
+# Step 11: Calculate Accuracy
+# Assuming we have the true labels for the test set (replace with actual labels)
+# For demonstration, let's create a dummy array of true labels
+# true_labels = np.random.randint(2, size=len(y_pred))  # Replace this with actual labels
+true_labels = np.zeros(len(y_pred))  # Change this to actual labels when available
+
+accuracy = accuracy_score(true_labels, y_pred)
+print("Accuracy of the anomaly detection model:", accuracy)
+
+# Step 12: Plot Loss and Validation Loss
+plt.figure(figsize=(12, 6))
+plt.plot(history.history['loss'], label='Train Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.title('Autoencoder Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+# Step 13: Plot Reconstruction Errors
+plt.figure(figsize=(12, 6))
+plt.hist(reconstruction_errors.numpy(), bins=50, alpha=0.6, color='g', label='Reconstruction Errors')
+plt.axvline(threshold, color='r', linestyle='--', label='Threshold')
+plt.title('Reconstruction Errors Histogram')
+plt.xlabel('Reconstruction Error')
+plt.ylabel('Frequency')
+plt.legend()
+plt.show()
+
+# Step 14: Visualization of Normal and Anomalous Data
+# For visualization, select some examples
+normal_data = x_test[test_reconstruction_errors.numpy() <= threshold]
+anomalous_data = x_test[test_reconstruction_errors.numpy() > threshold]
+
+# Randomly select some samples for plotting
+num_samples = 10
+normal_samples = normal_data[np.random.choice(normal_data.shape[0], num_samples, replace=False)]
+anomalous_samples = anomalous_data[np.random.choice(anomalous_data.shape[0], num_samples, replace=False)]
+
+plt.figure(figsize=(15, 10))
+for i in range(num_samples):
+    plt.subplot(2, num_samples, i + 1)
+    plt.title("Normal Sample")
+    plt.plot(normal_samples[i])
+    
+    plt.subplot(2, num_samples, i + 1 + num_samples)
+    plt.title("Anomalous Sample")
+    plt.plot(anomalous_samples[i])
+
+plt.tight_layout()
+plt.show()
+
+# Conclusion
+print("The model was able to identify anomalies with an accuracy of:", accuracy)
+

@@ -1,0 +1,156 @@
+import numpy as np
+import re
+import matplotlib.pyplot as plt
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.pylab as pylab
+from sklearn.preprocessing import normalize
+
+
+# Data Preparation
+sentences = """We are about to study the idea of a computational process.
+Computational processes are abstract beings that inhabit computers.
+As they evolve, processes manipulate other abstract things called data.
+The evolution of a process is directed by a pattern of rules
+called a program. People create programs to direct processes. In effect,
+we conjure the spirits of the computer with our spells."""
+
+
+# Preprocessing the sentences
+sentences = re.sub('[^A-Za-z0-9]+', ' ', sentences)  # Remove special characters
+sentences = re.sub(r'(?:^| )\w(?:$| )', ' ', sentences).strip()  # Remove 1-letter words
+sentences = sentences.lower()  # Convert to lowercase
+
+
+# Tokenize the sentences
+words = sentences.split()
+vocab = set(words)
+vocab_size = len(vocab)
+embed_dim = 100  # Embedding dimension
+context_size = 3  # Window size
+word_to_ix = {word: i for i, word in enumerate(vocab)}  # Map word to index
+ix_to_word = {i: word for i, word in enumerate(vocab)}  # Map index to word
+
+
+# Prepare the data (context, target pairs)
+data = []
+for i in range(2, len(words) - 2):
+    context = [words[i - 2], words[i - 1], words[i + 1], words[i + 2]]  # Context words
+    target = words[i]  # Target word
+    data.append((context, target))
+
+print(data[:5])  # Display first 5 data pairs
+
+
+# Initialize random embeddings
+embeddings = np.random.random_sample((vocab_size, embed_dim))
+
+
+# Linear function to calculate weighted sum
+def linear(m, theta):
+    w = theta
+    return m.dot(w)
+
+
+# Log-Softmax function
+def log_softmax(x):
+    e_x = np.exp(x - np.max(x))
+    return np.log(e_x / e_x.sum())
+
+
+# Cross-entropy loss (negative log likelihood loss)
+def NLLLoss(logs, targets):
+    out = logs[range(len(targets)), targets]
+    return -out.sum() / len(out)
+
+
+# Softmax cross-entropy with logits
+def log_softmax_crossentropy_with_logits(logits, target):
+    out = np.zeros_like(logits)
+    out[np.arange(len(logits)), target] = 1
+    softmax = np.exp(logits) / np.exp(logits).sum(axis=-1, keepdims=True)
+    return (- out + softmax) / logits.shape[0]
+def forward(context_idxs, theta):
+    m = embeddings[context_idxs].mean(axis=0).reshape(1, -1)  # Average the embeddings of the context words
+    n = linear(m, theta)  # Now, m has shape (1, embed_dim)
+    o = log_softmax(n)
+    return m, n, o
+
+
+# Backward pass (calculate gradients)
+def backward(preds, theta, target_idxs):
+    m, n, o = preds
+    dlog = log_softmax_crossentropy_with_logits(n, target_idxs)
+    dw = m.T.dot(dlog)
+    return dw
+
+
+# Optimization (update the weights)
+def optimize(theta, grad, lr=0.03):
+    theta -= grad * lr
+    return theta
+embeddings = np.random.random_sample((vocab_size, embed_dim))
+#Genrate training data
+
+theta = np.random.uniform(-1, 1, (2 * context_size * embed_dim, vocab_size))
+theta = np.random.uniform(-1, 1, (embed_dim, vocab_size))
+
+
+# Train the model with the corrected theta dimension
+epoch_losses = {}
+
+for epoch in range(150):  # Increased epochs
+    losses = []
+    for context, target in data:
+        context_idxs = np.array([word_to_ix[w] for w in context])
+        preds = forward(context_idxs, theta)
+
+        target_idxs = np.array([word_to_ix[target]])
+        loss = NLLLoss(preds[-1], target_idxs)
+        losses.append(loss)
+
+        grad = backward(preds, theta, target_idxs)
+        theta = optimize(theta, grad, lr=0.01)  # Experiment with the learning rate
+
+    epoch_losses[epoch] = losses
+
+
+
+ix = np.arange(0,80)
+
+fig = plt.figure()
+fig.suptitle('Epoch/Losses', fontsize=20)
+plt.plot(ix,[epoch_losses[i][0] for i in ix])
+plt.xlabel('Epochs', fontsize=12)
+plt.ylabel('Losses', fontsize=12)
+
+
+# Prediction function to predict the target word
+def predict(words):
+    context_idxs = np.array([word_to_ix[w] for w in words])  # Get the indices for the context words
+    preds = forward(context_idxs, theta)
+    word = ix_to_word[np.argmax(preds[-1])]  # Get the predicted word based on the highest probability
+    return word
+
+
+# (['we', 'are', 'to', 'study'], 'about')
+predict(['we', 'are', 'to', 'study'])
+
+
+# Accuracy function to calculate the model's performance
+def accuracy():
+    correct = 0
+    for context, target in data:
+        pred = predict(context)
+        if pred == target:
+            correct += 1
+    return correct / len(data)
+
+
+print(f'Accuracy: {accuracy() * 100:.2f}%')  # Calculate and print accuracy
+
+
+
+# Test prediction
+print(predict(['we', 'are', 'to', 'study']))  # Example test
+print(predict(['processes', 'manipulate', 'things', 'study']))  # Example test
